@@ -9,6 +9,8 @@ ipython = "*"
 pandas = "*"
 matplotlib = "*"
 sympy = "*"
+pyaml = "*"
+pytest = "*"
 
 [dev-packages]
 pylint = "*"
