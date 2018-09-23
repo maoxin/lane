@@ -19,3 +19,15 @@ class TestCameraCalibration(object):
 
         assert np.abs(length - real_length) < 4
 
+    def test_car_width(self):
+        cc = CameraCalibration()
+
+        X1, Y1 = cc.image2world(914.768, 603.941)
+        X2, Y2 = cc.image2world(799.19, 617.622)
+
+        width = np.sqrt((X2 - X1)**2 + (Y2 - Y1)**2)
+
+        real_width = 2.55
+
+        assert np.abs(width - real_width) < 0.2
+

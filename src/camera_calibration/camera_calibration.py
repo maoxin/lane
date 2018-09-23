@@ -1,6 +1,8 @@
 import numpy as np
 import sys
 from camera_calibration.parameter_compute import ParameterCompute
+import yaml
+from os.path import join, realpath, dirname
 
 class CameraCalibration(object):
     """
@@ -12,7 +14,7 @@ class CameraCalibration(object):
     def __init__(self, extent_x=1920, extent_y=1080,
                  p1=(947.638, 767.447), p2=(709.228, 514.002), 
                  p3=(806.093, 504.293), p4=(1089.306, 736.378),
-                 u2=728.476, u4=844.025, w=2.55):
+                 u2=728.476, u4=844.025, w=2.55, default=True):
         """
         h: height (m)
         phi: tilt (˚)
@@ -20,9 +22,19 @@ class CameraCalibration(object):
         v0: ordinate of the first vanishing point in the paper (pixel)
         """  
 
-        pc = ParameterCompute(extent_x, extent_y,
-                                p1, p2, p3, p4,
-                                u2, u4, w)
+        if default:
+            try:
+                with open("cc_parameter.yaml", 'r') as f_cc_parameter:
+                    cc_parameter = yaml.load(f_cc_parameter.read())
+            except FileNotFoundError:
+                pc = ParameterCompute(extent_x, extent_y,
+                                      p1, p2, p3, p4,
+                                      u2, u4, w)
+        else:
+            pc = ParameterCompute(extent_x, extent_y,
+                                    p1, p2, p3, p4,
+                                    u2, u4, w)
+
         cc_parameter = pc.calibration()
 
         self.f = cc_parameter['f']

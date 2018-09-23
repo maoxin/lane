@@ -26,14 +26,14 @@ class CalculateSpeed(object):
         self.Us = []
         self.Vs = []
         self.times = []
-        for _, track in self.track_coord.iterrows():
+        for i, track in self.track_coord.iterrows():
             track = track.dropna().apply(eval)
             dt = np.dtype('float,float')
             track = np.array(track, dtype=dt)
 
             U = track['f0']
             V = track['f1']
-            time = np.arange(U.shape[0]) * 0.1
+            time = self.start_time.loc[i] + np.arange(U.shape[0]) * 0.1
 
             idx = ((V >= self.bottom_obs_rec) & (V <= self.top_obs_rec))
             U = U[idx]
