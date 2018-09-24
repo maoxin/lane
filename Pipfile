@@ -11,6 +11,8 @@ matplotlib = "*"
 sympy = "*"
 pyaml = "*"
 pytest = "*"
+scipy = "*"
+jupyter = "*"
 
 [dev-packages]
 pylint = "*"
