@@ -13,6 +13,7 @@ pyaml = "*"
 pytest = "*"
 scipy = "*"
 jupyter = "*"
+pykalman = "*"
 
 [dev-packages]
 pylint = "*"

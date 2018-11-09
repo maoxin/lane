@@ -11,7 +11,9 @@ from os.path import join, realpath, dirname
 class CalculateSpeed(object):
     def __init__(self, filename=join(dirname(dirname(realpath(__file__))), "data/cctv_ftg1_SPEED_000000_carLoc.csv"),
                  top_obs_rec=906, bottom_obs_rec=439,
-                 window_size=10):
+                 window_size=10, start_time_stamp='2018-01-01T08:00'):
+        self.start_time_stamp = start_time_stamp
+
         self.start_time = []
         self.car_type = []
         self.track_coord = []
@@ -19,7 +21,7 @@ class CalculateSpeed(object):
             for line in f:
                 dt = line.strip().split("; ")
 
-                self.start_time.append(float(dt[0]) * 0.1)
+                self.start_time.append(float(dt[0]) * 0.1 / 3)
                 self.car_type.append(dt[1])
                 self.track_coord.append([eval(x) for x in dt[2:]])
                 
@@ -31,7 +33,20 @@ class CalculateSpeed(object):
 
         self.window_size = window_size
         
-        self.cc = CameraCalibration()
+        if pd.to_datetime(self.start_time_stamp) < pd.to_datetime('2018-09-11T16:00'):
+            self.cc = CameraCalibration(default=False)
+            self.scale = 1
+            self.top_obs_rec = 931.761
+            self.bottom_obs_rec = 439.723
+        else:
+            self.cc = CameraCalibration(
+                p1=(787.919, 640.099), p2=(594.782, 404.630), 
+                p3=(675.065, 399.513), p4=(913.843, 619.450),
+                u2=703.475, u4=823.241, default=False
+            )
+            self.scale = 31.05945702896952 / 51.07394876776243
+            self.top_obs_rec = 793.968
+            self.bottom_obs_rec = 337.152
 
     def coord_image2word(self):
         self.Us = []
@@ -67,33 +82,41 @@ class CalculateSpeed(object):
         Xs, Ys, times = self.coord_image2word()
         self.speeds = []
         for X, Y, time in zip(Xs, Ys, times):
-            self.speeds.append(
-                np.sqrt(
-                    (X[self.window_size:] - X[:-self.window_size])**2 +
-                    (Y[self.window_size:] - Y[:-self.window_size])**2
-                ) / (time[self.window_size:] - time[:-self.window_size]) * 3.6
-            )
+            # self.speeds.append(
+                # ((np.sqrt(
+                    # (X[self.window_size:] - X[:-self.window_size])**2 +
+                    # (Y[self.window_size:] - Y[:-self.window_size])**2
+                # ) / (time[self.window_size:] - time[:-self.window_size]) * 3.6)).mean()
+            # )
+            if len(time) > 1:
+                self.speeds.append(np.sqrt((X[-1] - X[0])**2 + (Y[-1] - Y[0])**2) / (time[-1] - time[0]) * 3.6 * self.scale)
             # m/s -> km/h
 
         return self.speeds
 
-    def save_result(self):
+    def get_df(self, save=False):
         df = pd.DataFrame(columns=['time', 'speed', 'car_type'])
         
-        all_speeds = np.hstack(self.speeds)
-        all_times = [(tm[self.window_size:] + tm[:-self.window_size]) / 2 for tm in self.times]
-        all_times = np.hstack(all_times).astype('timedelta64[s]') + np.datetime64('2018-01-01T08:00')
+        # all_speeds = np.hstack(self.speeds)
+        all_speeds = self.speeds
+        # all_times = [(tm[self.window_size:] + tm[:-self.window_size]) / 2 for tm in self.times]
+        all_times = [(tm[-1] + tm[0]) / 2 for tm in self.times if len(tm) > 1]
+        all_times = np.hstack(all_times).astype('timedelta64[s]') + np.datetime64(self.start_time_stamp)
 
         df.speed = all_speeds
         df.time = all_times
         i = 0
-        for j in range(len(self.speeds)):
-            df.loc[i: i+self.speeds[j].shape[0], 'car_type'] = self.car_type[j]
-            i = i + self.speeds[j].shape[0]
+        for j in range(len(self.times)):
+            # df.loc[i: i+self.speeds[j].shape[0], 'car_type'] = self.car_type[j]
+            # i = i + self.speeds[j].shape[0]
+            if len(self.times[j]) > 1:
+                df.loc[i, 'car_type'] = self.car_type[j]
+                i += 1
 
-        df.to_csv(join(dirname(dirname(realpath(__file__))), 'result/speeds.csv'), index=False)
+        if save:
+            df.to_csv(join(dirname(dirname(realpath(__file__))), f'result/speeds_{self.start_time_stamp}.csv'), index=False)
 
-        return 0
+        return df
 
 
     def draw_result(self):
@@ -125,10 +148,3 @@ class CalculateSpeed(object):
             plt.close()
 
         return 0
-
-
-if __name__ == "__main__":
-    cs = CalculateSpeed()
-    speeds = cs.get_speed()
-    # cs.draw_result()
-    cs.save_result()
