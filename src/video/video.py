@@ -3,6 +3,7 @@ import numpy as np
 from sympy import Point, Line
 import matplotlib.pyplot as plt
 import json
+import os
 
 plt.ioff()
 
@@ -198,6 +199,8 @@ class ValidatorSingleBusFGMaskImage(object):
         return fgmasks
 
     def select_parameters(self):
+        os.makedirs("../../result/opencv_experience", exist_ok=True)
+
         max_score = 0
         selected_k = None
         selected_op = None
