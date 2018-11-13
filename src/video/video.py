@@ -158,109 +158,82 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
 
         return key_geometry
 
-def get_fg_frames(frame_inds, start, end):
-    fgmasks = v.get_foreground_mask(start, end, 200)
+class ValidatorSingleBusFGMaskImage(object):
+    def __init__(self, video_path="../../data/cctv_ftg6.mp4", fp_objects="cctv_ftg6.mp4.json",
+                 fp_ground_truth='ground_truth.json'):
+        with open(fp_objects) as f:
+            self.records = json.load(f)
+        with open(fp_ground_truth) as f:
+            self.ground_truth = json.load(f)
 
-    return fgmasks, start, end
+        self.video = Video(video_path)
+        self.frame_records = int(self.records['framerate'])
+        self.frame_inds = sorted([int( (int(key) - 1) * self.video.frame_rate / self.frame_records) for key in self.records['frames']])
+        self.start = self.frame_inds[0]
+        self.end = self.frame_inds[-1]
 
-def select_parameters(records, fgmasks, start, end, frame_records, ground_truth):
-    max_score = 0
-    selected_kernel = None
-    selected_op = None
-    selected_cl = None
+        self.fgmasks = self.get_fg_frames()
 
-    for kernel in range(2, 10):
-        for op in range(1, 10):
-            for cl in range(1, 10):
-                print(f"kernel: {kernel}, op: {op}, cl: {cl}")
-                score = 0
-                for i, key in enumerate(records['frames']):
-                    record = records['frames'][key][0]
-                    x0 = int(record['x1'] * v.width / record['width'])
-                    x1 = int(record['x2'] * v.width / record['width'])
-                    y0 = int(record['y1'] * v.height / record['height'])
-                    y1 = int(record['y2'] * v.height / record['height'])
+        self.parameter = self.select_parameters()
 
-                    frame_ind = int( (int(key) - 1) * v.frame_rate / frame_records)
-                    fgmask = fgmasks[frame_ind-start]
-                    image = v[frame_ind][1]
-                    sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1))
-                    hull = sb.get_hull_of_object(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
-                    result = sb.get_key_geometry(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
+    def get_parameter(self):
+        return self.parameter
 
-                    gt = ground_truth[key]
-                    score += 1 / (
-                        np.sqrt(sum( (np.array(result['front_point']) - np.array(gt['front_point'])) **2 )) +
-                        np.sqrt(sum( (np.array(result['back_point'] ) - np.array(gt['back_point']))  **2 )) + 
-                        np.sqrt(sum( (np.array(result['width_point']) - np.array(gt['width_point'])) **2 ))
-                         + 0.01)
-                
-                if score > max_score:
-                    max_score = score
-                    selected_kernel = kernel
-                    selected_op = op
-                    selected_cl = cl
 
-    parameter = {
-        "kernel": selected_kernel,
-        "op": selected_op,
-        "cl": selected_cl,
-    }
+    def get_fg_frames(self):
+        fgmasks = self.video.get_foreground_mask(self.start, self.end, 200)
 
-    with open("key_geometry_parameter.json", 'w') as f:
-        json.dump(parameter, f)
-    
-    return parameter
+        return fgmasks
 
-def main(records, fgmasks, start, end, frame_records, resize_x=600, resize_y=600, kernel=2, op=1, cl=1):
-    for i, key in enumerate(records['frames']):
-        plt.close()
-        record = records['frames'][key][0]
-        x0 = int(record['x1'] * v.width / record['width'])
-        x1 = int(record['x2'] * v.width / record['width'])
-        y0 = int(record['y1'] * v.height / record['height'])
-        y1 = int(record['y2'] * v.height / record['height'])
+    def select_parameters(self):
+        max_score = 0
+        selected_kernel = None
+        selected_op = None
+        selected_cl = None
 
-        frame_ind = int( (int(key) - 1) * v.frame_rate / frame_records)
-        # if frame_ind == 112590:
-        fgmask = fgmasks[frame_ind-start]
-        image = v[frame_ind][1]
-        sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1))
-        hull = sb.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, kernel=kernel, op=op, cl=cl)
-        result = sb.get_key_geometry(resize_x=resize_x, resize_y=resize_y, kernel=kernel, op=op, cl=cl)
+        for kernel in range(2, 10):
+            for op in range(1, 10):
+                for cl in range(1, 10):
+                    print(f"kernel: {kernel}, op: {op}, cl: {cl}")
+                    score = 0
+                    for i, key in enumerate(self.records['frames']):
+                        record = self.records['frames'][key][0]
+                        x0 = int(record['x1'] * self.video.width / record['width'])
+                        x1 = int(record['x2'] * self.video.width / record['width'])
+                        y0 = int(record['y1'] * self.video.height / record['height'])
+                        y1 = int(record['y2'] * self.video.height / record['height'])
 
-        img = cv2.drawContours(sb.image_single_object.copy(), [hull], -1, (0, 255, 0), 3)
+                        frame_ind = int( (int(key) - 1) * self.video.frame_rate / self.frame_records)
+                        fgmask = self.fgmasks[frame_ind-self.start]
+                        image = self.video[frame_ind][1]
+                        sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1))
+                        hull = sb.get_hull_of_object(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
+                        result = sb.get_key_geometry(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
 
-        plt.imshow(image)
-        input("")
+                        gt = self.ground_truth[key]
+                        score += 1 / (
+                            np.sqrt(sum( (np.array(result['front_point']) - np.array(gt['front_point'])) **2 )) +
+                            np.sqrt(sum( (np.array(result['back_point'] ) - np.array(gt['back_point']))  **2 )) + 
+                            np.sqrt(sum( (np.array(result['width_point']) - np.array(gt['width_point'])) **2 ))
+                            + 0.01)
+                    
+                    if score > max_score:
+                        max_score = score
+                        selected_kernel = kernel
+                        selected_op = op
+                        selected_cl = cl
 
-        # print(result)
-        # axes[0].imshow(sb.fgmask_single_object)
-        # axes[i][0].imshow(fgmask)
-        # axes[i][1].imshow(img)
-        # axes[i // 3, i % 3].imshow(img)
-        # axes[i // 3, i % 3].set_title(f"frame: {key}")
+        parameter = {
+            "kernel": selected_kernel,
+            "op": selected_op,
+            "cl": selected_cl,
+        }
 
-        # plt.imshow(v[112590][1][y0: y1+1, x0: x1+1])
-    # plt.subplots_adjust(wspace=0, hspace=0)
-    # for ax in axes.flatten():
-        # ax.axis('off')
-    # plt.suptitle(f'kernel: {kernel}, open: {op}, close: {cl}')
+        with open("key_geometry_parameter.json", 'w') as f:
+            json.dump(parameter, f)
+        
+        return parameter
 
-    # plt.savefig(f'../../result/opencv_experience/k{kernel}_o{op}_c{cl}.pdf')
 
 if __name__ == '__main__':
-    v = Video("../../data/cctv_ftg6.mp4")
-    with open('cctv_ftg6.mp4.json') as f:
-        records = json.load(f)
-
-    frame_records = int(records['framerate'])
-    frame_inds = sorted([int( (int(key) - 1) * v.frame_rate / frame_records) for key in records['frames']])
-    start = frame_inds[0]
-    end = frame_inds[-1]
-
-    with open('ground_truth.json') as f:
-        ground_truth = json.load(f)
-
-
-    
+    validate = ValidatorSingleBusFGMaskImage()
