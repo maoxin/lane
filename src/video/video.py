@@ -55,7 +55,7 @@ class SingleObjectFGMaskImage(object):
     in an front ground mask with just a single object, compute the hull of that
         object.
     """
-    def __init__(self, fgmask, object_bbox):
+    def __init__(self, image, fgmask, object_bbox):
         self.x0, self.y0, self.x1, self.y1 = object_bbox
         # self.__x0_dilate = max(self.x0 - 40, 0)
         # self.__x1_dilate = min(self.x1 + 40, fgmask.shape[1])
@@ -67,7 +67,10 @@ class SingleObjectFGMaskImage(object):
         self.__y1_dilate = self.y1
 
         self.fgmask = fgmask
+        self.image = image
         self.fgmask_single_object = self.fgmask[self.__y0_dilate: self.__y1_dilate+1,
+                                                self.__x0_dilate: self.__x1_dilate+1]
+        self.image_single_object = self.image[self.__y0_dilate: self.__y1_dilate+1,
                                                 self.__x0_dilate: self.__x1_dilate+1]
 
     def get_dilate_offset(self):
@@ -109,8 +112,8 @@ class SingleObjectFGMaskImage(object):
         return object_hull.reshape(-1, 2)
 
 class SingleBusFGMaskImage(SingleObjectFGMaskImage):
-    def __init__(self, fgmask, object_bbox):
-        super().__init__(fgmask, object_bbox)
+    def __init__(self, image, fgmask, object_bbox):
+        super().__init__(image, fgmask, object_bbox)
 
     def __rotate_point_anti_clockwise(self, ar_xy, angle_deg):
         angle_rad = np.deg2rad(angle_deg)
@@ -153,7 +156,7 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
         return key_geometry
 
 if __name__ == '__main__':
-    v = Video("/Volumes/U9/lane/cctv_ftg6.mp4")
+    v = Video("../../data/cctv_ftg6.mp4")
     with open('cctv_ftg6.mp4.json') as f:
         records = json.load(f)
 
@@ -174,11 +177,12 @@ if __name__ == '__main__':
         frame_ind = int( (int(key) - 1) * v.frame_rate / frame_records)
         # if frame_ind == 112590:
         fgmask = fgmasks[frame_ind-start]
-        sb = SingleBusFGMaskImage(fgmask, (x0, y0, x1, y1))
+        image = v[frame_ind][1]
+        sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1))
         hull = sb.get_hull_of_object()
         result = sb.get_key_geometry()
 
-        img = cv2.drawContours(sb.fgmask_single_object.copy(), [hull], -1, (0, 255, 0), 3)
+        img = cv2.drawContours(sb.image_single_object.copy(), [hull], -1, (0, 255, 0), 3)
 
         print(result)
         fig, axes = plt.subplots(ncols=2, nrows=1)
