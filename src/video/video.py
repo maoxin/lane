@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 import json
 import os
 
-plt.ioff()
-
 class Video(object):
     def __init__(self, video_path='../data/video/MVI_7739.mp4'):
         self.__video = cv2.VideoCapture(video_path)
