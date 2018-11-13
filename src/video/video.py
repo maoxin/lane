@@ -77,7 +77,7 @@ class SingleObjectFGMaskImage(object):
     def get_dilate_offset(self):
         return self.__x0_dilate, self.__y0_dilate
 
-    def get_hull_of_object(self, resize_x=600, resize_y=600, k=2, op=1, cl=1):
+    def get_hull_of_object(self, resize_x=600, resize_y=600, k=None, op=None, cl=None):
         if self.use_default:
             try:
                 with open('key_geometry_parameter.json') as f:
@@ -141,7 +141,7 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
 
         return new_ar_xy
     
-    def get_key_geometry(self, r_aclockwise=10, resize_x=600, resize_y=600, k=2, op=1, cl=1):
+    def get_key_geometry(self, r_aclockwise=10, resize_x=600, resize_y=600, k=None, op=None, cl=None):
         bus_hull = self.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, k=k, op=op, cl=cl)
 
         bus_hull_rc = self.__rotate_point_anti_clockwise(bus_hull, -r_aclockwise)
@@ -238,6 +238,12 @@ class ValidatorSingleBusFGMaskImage(object):
                             + 0.01)
                         
                         img = cv2.drawContours(sb.image_single_object.copy(), [hull], -1, (0, 255, 0), 3)
+                        cv2.circle(img, (np.array(result['front_point'][0] + x0, np.array(result['front_point'][1] + y0),
+                                   10, (255, 0, 0))
+                        cv2.circle(img, (np.array(result['back_point'][0] + x0, np.array(result['back_point'][1] + y0),
+                                   10, (255, 0, 0))
+                        cv2.circle(img, (np.array(result['width_point'][0] + x0, np.array(result['width_point'][1] + y0),
+                                   10, (255, 0, 0))
                         axes[i].imshow(img)
                         axes[i].set_title(f"frame: {key}")
                     
