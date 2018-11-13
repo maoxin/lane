@@ -4,7 +4,7 @@ from sympy import Point, Line
 import matplotlib.pyplot as plt
 import json
 
-plt.ion()
+plt.ioff()
 
 class Video(object):
     def __init__(self, video_path='../data/video/MVI_7739.mp4'):
@@ -55,7 +55,9 @@ class SingleObjectFGMaskImage(object):
     in an front ground mask with just a single object, compute the hull of that
         object.
     """
-    def __init__(self, image, fgmask, object_bbox):
+    def __init__(self, image, fgmask, object_bbox, use_default=True):
+        self.use_default = use_default
+
         self.x0, self.y0, self.x1, self.y1 = object_bbox
         # self.__x0_dilate = max(self.x0 - 40, 0)
         # self.__x1_dilate = min(self.x1 + 40, fgmask.shape[1])
@@ -76,14 +78,24 @@ class SingleObjectFGMaskImage(object):
     def get_dilate_offset(self):
         return self.__x0_dilate, self.__y0_dilate
 
-    def get_hull_of_object(self, resize_x=600, resize_y=600, kernel=2, op=1, cl=1):
+    def get_hull_of_object(self, resize_x=600, resize_y=600, k=2, op=1, cl=1):
+        if self.use_default:
+            try:
+                with open('key_geometry_parameter.json') as f:
+                    parameter = json.load(f)
+                k = parameter['k']
+                op = parameter['op']
+                cl = parameter['cl']
+            except FileNotFoundError:
+                pass
+
         ret, fgmask_single_object = cv2.threshold(self.fgmask_single_object, 127, 255, 0)
 
         if (not (resize_x is None)) and (not (resize_y is None)):
             default_y_size, default_x_size = fgmask_single_object.shape
             fgmask_single_object = cv2.resize(fgmask_single_object, dsize=(resize_x, resize_y))
 
-        kernel = np.ones((2, 2), np.uint8)
+        kernel = np.ones((k, k), np.uint8)
 
         fgmask_single_object = cv2.morphologyEx(fgmask_single_object, cv2.MORPH_OPEN, kernel, iterations=op)
         fgmask_single_object = cv2.morphologyEx(fgmask_single_object, cv2.MORPH_CLOSE, kernel, iterations=cl)
@@ -115,8 +127,8 @@ class SingleObjectFGMaskImage(object):
         return object_hull
 
 class SingleBusFGMaskImage(SingleObjectFGMaskImage):
-    def __init__(self, image, fgmask, object_bbox):
-        super().__init__(image, fgmask, object_bbox)
+    def __init__(self, image, fgmask, object_bbox, use_default=True):
+        super().__init__(image, fgmask, object_bbox, use_default)
 
     def __rotate_point_anti_clockwise(self, ar_xy, angle_deg):
         angle_rad = np.deg2rad(angle_deg)
@@ -130,8 +142,8 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
 
         return new_ar_xy
     
-    def get_key_geometry(self, r_aclockwise=10, resize_x=600, resize_y=600, kernel=2, op=1, cl=1):
-        bus_hull = self.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, kernel=kernel, op=op, cl=cl)
+    def get_key_geometry(self, r_aclockwise=10, resize_x=600, resize_y=600, k=2, op=1, cl=1):
+        bus_hull = self.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, k=k, op=op, cl=cl)
 
         bus_hull_rc = self.__rotate_point_anti_clockwise(bus_hull, -r_aclockwise)
         bus_hull_rac = self.__rotate_point_anti_clockwise(bus_hull, r_aclockwise)
@@ -187,15 +199,22 @@ class ValidatorSingleBusFGMaskImage(object):
 
     def select_parameters(self):
         max_score = 0
-        selected_kernel = None
+        selected_k = None
         selected_op = None
         selected_cl = None
 
-        for kernel in range(2, 10):
+        for k in range(2, 10):
             for op in range(1, 10):
                 for cl in range(1, 10):
-                    print(f"kernel: {kernel}, op: {op}, cl: {cl}")
+                    print(f"k: {k}, op: {op}, cl: {cl}")
                     score = 0
+                    
+                    plt.close()
+                    ncols = 3
+                    nrows = int(np.ceil(len(self.records) / 3))
+                    fig, axes = plt.subplots(ncols=ncols, nrows=nrows)
+                    axes = axes.flatten()
+
                     for i, key in enumerate(self.records['frames']):
                         record = self.records['frames'][key][0]
                         x0 = int(record['x1'] * self.video.width / record['width'])
@@ -206,9 +225,9 @@ class ValidatorSingleBusFGMaskImage(object):
                         frame_ind = int( (int(key) - 1) * self.video.frame_rate / self.frame_records)
                         fgmask = self.fgmasks[frame_ind-self.start]
                         image = self.video[frame_ind][1]
-                        sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1))
-                        hull = sb.get_hull_of_object(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
-                        result = sb.get_key_geometry(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
+                        sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1), use_default=False)
+                        hull = sb.get_hull_of_object(resize_x=600, resize_y=600, k=k, op=op, cl=cl)
+                        result = sb.get_key_geometry(resize_x=600, resize_y=600, k=k, op=op, cl=cl)
 
                         gt = self.ground_truth[key]
                         score += 1 / (
@@ -216,15 +235,24 @@ class ValidatorSingleBusFGMaskImage(object):
                             np.sqrt(sum( (np.array(result['back_point'] ) - np.array(gt['back_point']))  **2 )) + 
                             np.sqrt(sum( (np.array(result['width_point']) - np.array(gt['width_point'])) **2 ))
                             + 0.01)
+                        
+                        img = cv2.drawContours(sb.image_single_object.copy(), [hull], -1, (0, 255, 0), 3)
+                        axes[i].imshow(img)
+                        axes[i].set_title(f"frame: {key}")
                     
                     if score > max_score:
                         max_score = score
-                        selected_kernel = kernel
+                        selected_k = k
                         selected_op = op
                         selected_cl = cl
+                    
+                    for ax in axes:
+                        ax.axis('off')
+                    plt.suptitle(f"kernel: {k}, op: {op}, cl: {cl}")
+                    plt.savefig(f"../../result/opencv_experience/k{k}_o{op}_c{cl}.pdf")
 
         parameter = {
-            "kernel": selected_kernel,
+            "k": selected_k,
             "op": selected_op,
             "cl": selected_cl,
         }
