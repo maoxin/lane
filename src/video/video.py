@@ -1,12 +1,18 @@
 import cv2
 import numpy as np
 from sympy import Point, Line
+import matplotlib.pyplot as plt
+import json
+
+plt.ion()
 
 class Video(object):
     def __init__(self, video_path='../data/video/MVI_7739.mp4'):
         self.__video = cv2.VideoCapture(video_path)
         self.__total_frames = int(self.__video.get(cv2.CAP_PROP_FRAME_COUNT))
         self.frame_rate = int(self.__video.get(cv2.CAP_PROP_FPS))
+        self.width = int(self.__video.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.__video.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
 
     def __read_frame(self, frame_num):
@@ -51,10 +57,14 @@ class SingleObjectFGMaskImage(object):
     """
     def __init__(self, fgmask, object_bbox):
         self.x0, self.y0, self.x1, self.y1 = object_bbox
-        self.__x0_dilate = max(self.x0 - 40, 0)
-        self.__x1_dilate = min(self.x1 + 40, fgmask.shape[1])
-        self.__y0_dilate = max(self.y0 - 40, 0)
-        self.__y1_dilate = min(self.y1 + 40, fgmask.shape[0])
+        # self.__x0_dilate = max(self.x0 - 40, 0)
+        # self.__x1_dilate = min(self.x1 + 40, fgmask.shape[1])
+        # self.__y0_dilate = max(self.y0 - 40, 0)
+        # self.__y1_dilate = min(self.y1 + 40, fgmask.shape[0])
+        self.__x0_dilate = self.x0
+        self.__x1_dilate = self.x1
+        self.__y0_dilate = self.y0
+        self.__y1_dilate = self.y1
 
         self.fgmask = fgmask
         self.fgmask_single_object = self.fgmask[self.__y0_dilate: self.__y1_dilate+1,
@@ -65,15 +75,25 @@ class SingleObjectFGMaskImage(object):
 
     def get_hull_of_object(self):
         ret, fgmask_single_object = cv2.threshold(self.fgmask_single_object, 127, 255, 0)
+        # fgmask_single_object = cv2.threshold(self.fgmask_single_object, 100, 255, 0)
 
-        kernel = np.ones((5, 5), np.uint8)
-        fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=2)
-        fgmask_single_object = cv2.dilate(fgmask_single_object, kernel, iterations=12)
-        fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=10)
+        # kernel = np.ones((5, 5), np.uint8)
+        kernel = np.ones((2, 2), np.uint8)
+        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=2)
+        # fgmask_single_object = cv2.dilate(fgmask_single_object, kernel, iterations=12)
+        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=10)
+
+        fgmask_single_object = cv2.morphologyEx(fgmask_single_object, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        # fgmask_single_object[self.fgmask_single_object==127] = 0
+
+        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=2)
+        # fgmask_single_object = cv2.dilate(fgmask_single_object, kernel, iterations=12)
+        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=10)
         # clear noise and fill hole
 
         _, contours, hierarchy = cv2.findContours(fgmask_single_object,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-        external_contour_inds = [x[1] for x in np.where(hierarchy[: ,: ,3] == -1)]
+        external_contour_inds = np.where(hierarchy[: ,: ,3].flatten() == -1)[0]
         external_contours = [contours[i] for i in external_contour_inds]
 
         object_hull = None
@@ -126,6 +146,7 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
         key_geometry = {
             'front_point': p1,
             'back_point': p2,
+            'width_point': p3,
             'vertical_slope': (p3[1] - p1[1]) / (p3[0] - p1[0])
         }
 
@@ -133,9 +154,43 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
 
 if __name__ == '__main__':
     v = Video("/Volumes/U9/lane/cctv_ftg6.mp4")
-    fgmask = v.get_foreground_mask(112590, 112590, 200)[0]
+    with open('cctv_ftg6.mp4.json') as f:
+        records = json.load(f)
 
-    x0, y0, x1, y1 = 361 * 1920 / 1022, 166 * 1080 / 575, 684 * 1920 / 1022, 499 * 1080 / 575
-    x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
+    frame_records = int(records['framerate'])
 
-    sb = SingleBusFGMaskImage(fgmask, (x0, y0, x1, y1))
+    frame_inds = sorted([int( (int(key) - 1) * v.frame_rate / frame_records) for key in records['frames']])
+    start = frame_inds[0]
+    end = frame_inds[-1]
+    fgmasks = v.get_foreground_mask(start, end, 200)
+
+    for key in records['frames']:
+        record = records['frames'][key][0]
+        x0 = int(record['x1'] * v.width / record['width'])
+        x1 = int(record['x2'] * v.width / record['width'])
+        y0 = int(record['y1'] * v.height / record['height'])
+        y1 = int(record['y2'] * v.height / record['height'])
+
+        frame_ind = int( (int(key) - 1) * v.frame_rate / frame_records)
+        # if frame_ind == 112590:
+        fgmask = fgmasks[frame_ind-start]
+        sb = SingleBusFGMaskImage(fgmask, (x0, y0, x1, y1))
+        hull = sb.get_hull_of_object()
+        result = sb.get_key_geometry()
+
+        img = cv2.drawContours(sb.fgmask_single_object.copy(), [hull], -1, (0, 255, 0), 3)
+
+        print(result)
+        fig, axes = plt.subplots(ncols=2, nrows=1)
+        axes[0].imshow(fgmask)
+        axes[1].imshow(img)
+        # plt.imshow(v[112590][1][y0: y1+1, x0: x1+1])
+        ipt = input("")
+        plt.close()
+
+    # fgmask = v.get_foreground_mask(112590, 112590, 200)[0]
+
+    # x0, y0, x1, y1 = 361 * 1920 / 1022, 166 * 1080 / 575, 684 * 1920 / 1022, 499 * 1080 / 575
+    # x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
+
+    # sb = SingleBusFGMaskImage(fgmask, (x0, y0, x1, y1))
