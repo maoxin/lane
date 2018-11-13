@@ -1,0 +1,37 @@
+{
+    "3748": {
+        "front_point": [518, 298],
+        "back_point": [483, 259],
+        "width_point": [572, 298]
+    },
+    "3749": {
+        "front_point": [530, 329],
+        "back_point": [495, 271],
+        "width_point": [600, 321]
+    },
+    "3750": {
+        "front_point": [561, 364],
+        "back_point": [510, 294],
+        "width_point": [638, 368]
+    },
+    "3751": {
+        "front_point": [603, 426],
+        "back_point": [530, 317],
+        "width_point": [696, 430]
+    },
+    "3752": {
+        "front_point": [689, 522],
+        "back_point": [569, 375],
+        "width_point": [797, 515]
+    },
+    "3753": {
+        "front_point": [824, 677],
+        "back_point": [607, 430],
+        "width_point": [960, 666]
+    },
+    "3754": {
+        "front_point": [1091, 956],
+        "back_point": [692, 526],
+        "width_point": [1234, 894]
+    }
+}

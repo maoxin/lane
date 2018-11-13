@@ -76,23 +76,18 @@ class SingleObjectFGMaskImage(object):
     def get_dilate_offset(self):
         return self.__x0_dilate, self.__y0_dilate
 
-    def get_hull_of_object(self):
+    def get_hull_of_object(self, resize_x=600, resize_y=600, kernel=2, op=1, cl=1):
         ret, fgmask_single_object = cv2.threshold(self.fgmask_single_object, 127, 255, 0)
-        # fgmask_single_object = cv2.threshold(self.fgmask_single_object, 100, 255, 0)
 
-        # kernel = np.ones((5, 5), np.uint8)
+        if (not (resize_x is None)) and (not (resize_y is None)):
+            default_y_size, default_x_size = fgmask_single_object.shape
+            fgmask_single_object = cv2.resize(fgmask_single_object, dsize=(resize_x, resize_y))
+
         kernel = np.ones((2, 2), np.uint8)
-        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=2)
-        # fgmask_single_object = cv2.dilate(fgmask_single_object, kernel, iterations=12)
-        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=10)
 
-        fgmask_single_object = cv2.morphologyEx(fgmask_single_object, cv2.MORPH_OPEN, kernel, iterations=1)
+        fgmask_single_object = cv2.morphologyEx(fgmask_single_object, cv2.MORPH_OPEN, kernel, iterations=op)
+        fgmask_single_object = cv2.morphologyEx(fgmask_single_object, cv2.MORPH_CLOSE, kernel, iterations=cl)
 
-        # fgmask_single_object[self.fgmask_single_object==127] = 0
-
-        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=2)
-        # fgmask_single_object = cv2.dilate(fgmask_single_object, kernel, iterations=12)
-        # fgmask_single_object = cv2.erode(fgmask_single_object, kernel, iterations=10)
         # clear noise and fill hole
 
         _, contours, hierarchy = cv2.findContours(fgmask_single_object,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -109,7 +104,15 @@ class SingleObjectFGMaskImage(object):
                 max_hull_area = hull_area
                 object_hull = hull
 
-        return object_hull.reshape(-1, 2)
+        object_hull = object_hull.reshape(-1, 2)
+
+        if (not (resize_x is None)) and (not (resize_y is None)):
+            object_hull[:, 0] = object_hull[:, 0] * default_x_size / fgmask_single_object.shape[0]
+            object_hull[:, 1] = object_hull[:, 1] * default_y_size / fgmask_single_object.shape[1]
+
+            object_hull = object_hull.astype('int32')
+
+        return object_hull
 
 class SingleBusFGMaskImage(SingleObjectFGMaskImage):
     def __init__(self, image, fgmask, object_bbox):
@@ -127,8 +130,8 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
 
         return new_ar_xy
     
-    def get_key_geometry(self, r_aclockwise=10):
-        bus_hull = self.get_hull_of_object()
+    def get_key_geometry(self, r_aclockwise=10, resize_x=600, resize_y=600, kernel=2, op=1, cl=1):
+        bus_hull = self.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, kernel=kernel, op=op, cl=cl)
 
         bus_hull_rc = self.__rotate_point_anti_clockwise(bus_hull, -r_aclockwise)
         bus_hull_rac = self.__rotate_point_anti_clockwise(bus_hull, r_aclockwise)
@@ -155,19 +158,63 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
 
         return key_geometry
 
-if __name__ == '__main__':
-    v = Video("../../data/cctv_ftg6.mp4")
-    with open('cctv_ftg6.mp4.json') as f:
-        records = json.load(f)
-
-    frame_records = int(records['framerate'])
-
-    frame_inds = sorted([int( (int(key) - 1) * v.frame_rate / frame_records) for key in records['frames']])
-    start = frame_inds[0]
-    end = frame_inds[-1]
+def get_fg_frames(frame_inds, start, end):
     fgmasks = v.get_foreground_mask(start, end, 200)
 
-    for key in records['frames']:
+    return fgmasks, start, end
+
+def select_parameters(records, fgmasks, start, end, frame_records, ground_truth):
+    max_score = 0
+    selected_kernel = None
+    selected_op = None
+    selected_cl = None
+
+    for kernel in range(2, 10):
+        for op in range(1, 10):
+            for cl in range(1, 10):
+                print(f"kernel: {kernel}, op: {op}, cl: {cl}")
+                score = 0
+                for i, key in enumerate(records['frames']):
+                    record = records['frames'][key][0]
+                    x0 = int(record['x1'] * v.width / record['width'])
+                    x1 = int(record['x2'] * v.width / record['width'])
+                    y0 = int(record['y1'] * v.height / record['height'])
+                    y1 = int(record['y2'] * v.height / record['height'])
+
+                    frame_ind = int( (int(key) - 1) * v.frame_rate / frame_records)
+                    fgmask = fgmasks[frame_ind-start]
+                    image = v[frame_ind][1]
+                    sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1))
+                    hull = sb.get_hull_of_object(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
+                    result = sb.get_key_geometry(resize_x=600, resize_y=600, kernel=kernel, op=op, cl=cl)
+
+                    gt = ground_truth[key]
+                    score += 1 / (
+                        np.sqrt(sum( (np.array(result['front_point']) - np.array(gt['front_point'])) **2 )) +
+                        np.sqrt(sum( (np.array(result['back_point'] ) - np.array(gt['back_point']))  **2 )) + 
+                        np.sqrt(sum( (np.array(result['width_point']) - np.array(gt['width_point'])) **2 ))
+                         + 0.01)
+                
+                if score > max_score:
+                    max_score = score
+                    selected_kernel = kernel
+                    selected_op = op
+                    selected_cl = cl
+
+    parameter = {
+        "kernel": selected_kernel,
+        "op": selected_op,
+        "cl": selected_cl,
+    }
+
+    with open("key_geometry_parameter.json", 'w') as f:
+        json.dump(parameter, f)
+    
+    return parameter
+
+def main(records, fgmasks, start, end, frame_records, resize_x=600, resize_y=600, kernel=2, op=1, cl=1):
+    for i, key in enumerate(records['frames']):
+        plt.close()
         record = records['frames'][key][0]
         x0 = int(record['x1'] * v.width / record['width'])
         x1 = int(record['x2'] * v.width / record['width'])
@@ -179,22 +226,41 @@ if __name__ == '__main__':
         fgmask = fgmasks[frame_ind-start]
         image = v[frame_ind][1]
         sb = SingleBusFGMaskImage(image, fgmask, (x0, y0, x1, y1))
-        hull = sb.get_hull_of_object()
-        result = sb.get_key_geometry()
+        hull = sb.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, kernel=kernel, op=op, cl=cl)
+        result = sb.get_key_geometry(resize_x=resize_x, resize_y=resize_y, kernel=kernel, op=op, cl=cl)
 
         img = cv2.drawContours(sb.image_single_object.copy(), [hull], -1, (0, 255, 0), 3)
 
-        print(result)
-        fig, axes = plt.subplots(ncols=2, nrows=1)
-        axes[0].imshow(fgmask)
-        axes[1].imshow(img)
+        plt.imshow(image)
+        input("")
+
+        # print(result)
+        # axes[0].imshow(sb.fgmask_single_object)
+        # axes[i][0].imshow(fgmask)
+        # axes[i][1].imshow(img)
+        # axes[i // 3, i % 3].imshow(img)
+        # axes[i // 3, i % 3].set_title(f"frame: {key}")
+
         # plt.imshow(v[112590][1][y0: y1+1, x0: x1+1])
-        ipt = input("")
-        plt.close()
+    # plt.subplots_adjust(wspace=0, hspace=0)
+    # for ax in axes.flatten():
+        # ax.axis('off')
+    # plt.suptitle(f'kernel: {kernel}, open: {op}, close: {cl}')
 
-    # fgmask = v.get_foreground_mask(112590, 112590, 200)[0]
+    # plt.savefig(f'../../result/opencv_experience/k{kernel}_o{op}_c{cl}.pdf')
 
-    # x0, y0, x1, y1 = 361 * 1920 / 1022, 166 * 1080 / 575, 684 * 1920 / 1022, 499 * 1080 / 575
-    # x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
+if __name__ == '__main__':
+    v = Video("../../data/cctv_ftg6.mp4")
+    with open('cctv_ftg6.mp4.json') as f:
+        records = json.load(f)
 
-    # sb = SingleBusFGMaskImage(fgmask, (x0, y0, x1, y1))
+    frame_records = int(records['framerate'])
+    frame_inds = sorted([int( (int(key) - 1) * v.frame_rate / frame_records) for key in records['frames']])
+    start = frame_inds[0]
+    end = frame_inds[-1]
+
+    with open('ground_truth.json') as f:
+        ground_truth = json.load(f)
+
+
+    
