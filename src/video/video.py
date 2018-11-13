@@ -238,11 +238,11 @@ class ValidatorSingleBusFGMaskImage(object):
                             + 0.01)
                         
                         img = cv2.drawContours(sb.image_single_object.copy(), [hull], -1, (0, 255, 0), 3)
-                        cv2.circle(img, (result['front_point'][0] + x0, result['front_point'][1] + y0),
+                        cv2.circle(img, (result['front_point'][0] - x0, result['front_point'][1] - y0),
                                    10, (255, 0, 0))
-                        cv2.circle(img, (result['back_point'][0] + x0, result['back_point'][1] + y0),
+                        cv2.circle(img, (result['back_point'][0] - x0, result['back_point'][1] - y0),
                                    10, (255, 0, 0))
-                        cv2.circle(img, (result['width_point'][0] + x0, result['width_point'][1] + y0),
+                        cv2.circle(img, (result['width_point'][0] - x0, result['width_point'][1] - y0),
                                    10, (255, 0, 0))
                         axes[i].imshow(img)
                         axes[i].set_title(f"frame: {key}")
