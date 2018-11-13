@@ -1,9 +1,11 @@
 import cv2
+import os
 import numpy as np
 from sympy import Point, Line
+import matplotlib
+if 'DISPLAY' not in os.environ: matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import json
-import os
 
 class Video(object):
     def __init__(self, video_path='../data/video/MVI_7739.mp4'):
