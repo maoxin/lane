@@ -2,13 +2,11 @@ import cv2
 import os
 import numpy as np
 from sympy import Point, Line
-import matplotlib
-if 'DISPLAY' not in os.environ: matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import json
 
 class Video(object):
-    def __init__(self, video_path='../data/video/MVI_7739.mp4'):
+    def __init__(self, video_path=f'{os.path.dirname(__file__)}/../data/video/MVI_7739.mp4'):
         self.__video = cv2.VideoCapture(video_path)
         self.__total_frames = int(self.__video.get(cv2.CAP_PROP_FRAME_COUNT))
         self.frame_rate = int(self.__video.get(cv2.CAP_PROP_FPS))
@@ -82,13 +80,14 @@ class SingleObjectFGMaskImage(object):
     def get_hull_of_object(self, resize_x=600, resize_y=600, k=None, op=None, cl=None):
         if self.use_default:
             try:
-                with open('key_geometry_parameter.json') as f:
+                with open(f'{os.path.dirname(__file__)}/key_geometry_parameter.json') as f:
                     parameter = json.load(f)
                 k = parameter['k']
                 op = parameter['op']
                 cl = parameter['cl']
             except FileNotFoundError:
-                pass
+                if (k is None) or (op is None) or (cl is None):
+                    raise Exception("Input parameter of hull generation or validate the model first")
 
         ret, fgmask_single_object = cv2.threshold(self.fgmask_single_object, 127, 255, 0)
 
@@ -144,6 +143,8 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
         return new_ar_xy
     
     def get_key_geometry(self, r_aclockwise=10, resize_x=600, resize_y=600, k=None, op=None, cl=None):
+        # rotate clockwise or anticlockwise should depend on the angle of the flow,
+        #  change latter
         bus_hull = self.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, k=k, op=op, cl=cl)
 
         bus_hull_rc = self.__rotate_point_anti_clockwise(bus_hull, -r_aclockwise)
@@ -172,7 +173,8 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
         return key_geometry
 
 class ValidatorSingleBusFGMaskImage(object):
-    def __init__(self, video_path="../../data/cctv_ftg6.mp4", fp_objects="cctv_ftg6.mp4.json",
+    def __init__(self, video_path=f"{os.path.dirname(__file__)}/../../data/cctv_ftg6.mp4",
+                 fp_objects=f"{os.path.dirname(__file__)}/cctv_ftg6.mp4.json",
                  fp_ground_truth='ground_truth.json'):
         with open(fp_objects) as f:
             self.records = json.load(f)
@@ -199,7 +201,7 @@ class ValidatorSingleBusFGMaskImage(object):
         return fgmasks
 
     def select_parameters(self):
-        os.makedirs("../../result/opencv_experience", exist_ok=True)
+        os.makedirs(f"{os.path.dirname(__file__)}/../../result/opencv_experience", exist_ok=True)
 
         max_score = 0
         selected_k = None
@@ -258,7 +260,7 @@ class ValidatorSingleBusFGMaskImage(object):
                     for ax in axes:
                         ax.axis('off')
                     plt.suptitle(f"kernel: {k}, op: {op}, cl: {cl}")
-                    plt.savefig(f"../../result/opencv_experience/k{k}_o{op}_c{cl}.pdf")
+                    plt.savefig(f"{os.path.dirname(__file__)}/../../result/opencv_experience/k{k}_o{op}_c{cl}.pdf")
 
         parameter = {
             "k": selected_k,
@@ -266,7 +268,7 @@ class ValidatorSingleBusFGMaskImage(object):
             "cl": selected_cl,
         }
 
-        with open("key_geometry_parameter.json", 'w') as f:
+        with open(f"{os.path.dirname(__file__)}/key_geometry_parameter.json", 'w') as f:
             json.dump(parameter, f)
         
         return parameter
