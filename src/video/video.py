@@ -4,6 +4,7 @@ import numpy as np
 from sympy import Point, Line
 import matplotlib.pyplot as plt
 import json
+from scipy.stats.stats import pearsonr
 
 class Video(object):
     def __init__(self, video_path=f'{os.path.dirname(__file__)}/../data/video/MVI_7739.mp4'):
@@ -144,8 +145,17 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
     
     def get_key_geometry(self, r_aclockwise=10, resize_x=600, resize_y=600, k=None, op=None, cl=None):
         # rotate clockwise or anticlockwise should depend on the angle of the flow,
-        #  change latter
+        #  change latter. the angle will be calculated by judge whether the lowest point is in the right
+        #  using distribution
         bus_hull = self.get_hull_of_object(resize_x=resize_x, resize_y=resize_y, k=k, op=op, cl=cl)
+
+        if pearsonr(bus_hull[:, 0], bus_hull[:, 1])[0] > 0:
+            mirror = False
+        else:
+            mirror = True
+            bus_hull[:, 0] = -bus_hull[:, 0]
+        # our agorithm assume the road direction is from northwest to southeast or vice versa
+        #  if it's not, we transform it to be
 
         bus_hull_rc = self.__rotate_point_anti_clockwise(bus_hull, -r_aclockwise)
         bus_hull_rac = self.__rotate_point_anti_clockwise(bus_hull, r_aclockwise)
@@ -157,6 +167,9 @@ class SingleBusFGMaskImage(SingleObjectFGMaskImage):
         bus_hull_rc2 = self.__rotate_point_anti_clockwise(bus_hull, -flow_theta)
 
         p3_ind = np.argmax(bus_hull_rc2[:, 0])
+
+        if mirror:
+            bus_hull[:, 0] = -bus_hull[:, 0]
 
         x0_dilate, y0_dilate = self.get_dilate_offset()
         p1 = bus_hull[p1_ind] + np.array([x0_dilate, y0_dilate])
