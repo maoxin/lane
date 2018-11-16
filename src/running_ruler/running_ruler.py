@@ -90,7 +90,10 @@ class RunningRuler(object):
             time_inside = time_trace[is_point_inside_ruler]
 
             if time_inside.size >= 2:
-                speed = ruler.length / (time_inside[-1] - time_inside[0])
+                if isinstance(time_inside[0], np.datetime64):
+                    speed = ruler.length / (time_inside[-1] - time_inside[0]).item().total_seconds()
+                else:
+                    speed = ruler.length / (time_inside[-1] - time_inside[0])
                 # m/s
                 speed *= 3.6
                 # km/h
@@ -213,9 +216,14 @@ class BuildRunningRuler(object):
         return 0
 
     def __get_smooth_score(self, bus_record):
+        # areas = abs((bus_record[:, 2] - bus_record[:, 1]).prob())
+        # score = 1 / (areas.std() / areas.mean())
+        
         return 0
 
     def __get_speed_score(self, bus_record):
+        # score = 1 / len(bus_record)
+        
         return 0
 
     def __get_key_geometry(self, best_records, time_traces):
